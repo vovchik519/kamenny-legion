@@ -69,6 +69,12 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);overf
 .adv{font-weight:700;font-size:13px;color:var(--ice);font-variant-numeric:tabular-nums}
 .adv:empty{display:none}
 
+.loader{position:fixed;left:50%;top:50%;z-index:15;transform:translate(-50%,-50%);width:min(320px,calc(100% - 32px));padding:18px 20px;border-radius:16px;background:rgba(12,18,28,.88);border:1px solid var(--line);text-align:center;transition:opacity .4s}
+.loader.done{opacity:0;pointer-events:none}
+.loader-title{margin:0 0 12px;font-family:var(--display);font-size:15px;letter-spacing:.06em}
+.loader-bar{height:4px;border-radius:4px;background:rgba(140,180,225,.18);overflow:hidden}
+.loader-bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ice),var(--violet));transition:width .25s}
+.loader-meta{margin:10px 0 0;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:6;transform:translate(-50%,10px);max-width:calc(100% - 32px);
   padding:10px 16px;border-radius:12px;background:rgba(12,18,28,.9);border:1px solid var(--line);font-size:14px;text-align:center;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -147,8 +153,15 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);overf
 </header>
 
 <footer class="trays">
-  <div class="tray"><span class="tray-label">Светлые потеряли</span><span class="tray-glyphs" id="lostW">—</span><span class="adv" id="advB"></span></div>
-  <div class="tray"><span class="tray-label">Тёмные потеряли</span><span class="tray-glyphs" id="lostB">—</span><span class="adv" id="advW"></span></div>
+  <div class="tray"><span class="tray-label">Потери · Время приключений</span><span class="tray-glyphs" id="lostW">—</span><span class="adv" id="advB"></span></div>
+  <div class="tray"><span class="tray-label">Потери · Рик и Морти</span><span class="tray-glyphs" id="lostB">—</span><span class="adv" id="advW"></span></div>
+</footer>
+<div class="loader" id="loader" role="status" aria-live="polite">
+  <p class="loader-title">Расставляем фарфоровые фигуры</p>
+  <div class="loader-bar"><span id="loaderFill"></span></div>
+  <p class="loader-meta" id="loaderMeta">0 из 12</p>
+</div>
+<footer hidden>
 </footer>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -237,14 +250,13 @@ const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: r
    ========================================================= */
 const GL = { p:'♟︎', n:'♞︎', b:'♝︎', r:'♜︎', q:'♛︎', k:'♚︎' };
 const VAL = { p:1, n:3, b:3, r:5, q:9, k:0 };
+const CHESS = { p:'пешка', n:'конь', b:'слон', r:'ладья', q:'ферзь', k:'король' };
+const SIDE = { w:'Время приключений', b:'Рик и Морти' };
 const UNIT = {
-  p:{ name:'копейщик', chess:'пешка',  fem:false },
-  n:{ name:'всадник',  chess:'конь',   fem:false },
-  b:{ name:'боевой маг', chess:'слон', fem:false },
-  r:{ name:'каменный страж', chess:'ладья', fem:false },
-  q:{ name:'воительница', chess:'ферзь', fem:true },
-  k:{ name:'король', chess:'король', fem:false },
+  w:{ p:{name:'Банановый страж'}, n:{name:'Джейк'}, b:{name:'Финн'}, r:{name:'БиМО'}, q:{name:'Принцесса Бубльгум',fem:true}, k:{name:'Ледяной король'} },
+  b:{ p:{name:'Морти'}, n:{name:'Птичья личность',fem:true}, b:{name:'Мистер Мисикс'}, r:{name:'Огурчик Рик'}, q:{name:'Саммер',fem:true}, k:{name:'Рик'} },
 };
+const KING_DAT = { w:'Ледяному королю', b:'Рику' };
 const FACTS = {
   p:[
     'Пешка — единственная фигура, которая никогда не ходит назад. Зато, дойдя до последней горизонтали, она может стать любой фигурой, кроме короля.',
@@ -463,15 +475,15 @@ const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
 (function makeEnv(){
   const pm = new THREE.PMREMGenerator(renderer);
   const env = new THREE.Scene();
-  const gc = document.createElement('canvas'); gc.width=16; gc.height=256;
-  const gg = gc.getContext('2d'); const gr = gg.createLinearGradient(0,0,0,256);
-  gr.addColorStop(0,'#cfe2ff'); gr.addColorStop(.45,'#3d5373'); gr.addColorStop(1,'#05080d');
-  gg.fillStyle=gr; gg.fillRect(0,0,16,256);
-  const skyT = new THREE.CanvasTexture(gc); skyT.encoding=THREE.sRGBEncoding;
-  env.add(new THREE.Mesh(new THREE.SphereGeometry(50,32,16), new THREE.MeshBasicMaterial({map:skyT, side:THREE.BackSide})));
+  // студия: тёмная комната и софтбоксы — дают фарфору глянцевые блики
+  env.add(new THREE.Mesh(new THREE.SphereGeometry(50,32,16), new THREE.MeshBasicMaterial({color:new THREE.Color('#0b0d12').convertSRGBToLinear(), side:THREE.BackSide})));
   const panel = (x,y,z,w,h,col) => { const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({color:col, side:THREE.DoubleSide})); m.position.set(x,y,z); m.lookAt(0,0,0); env.add(m); };
-  panel(20,30,15,18,10,'#ffffff'); panel(-25,12,-10,10,22,'#8fdcff'); panel(10,8,-28,14,8,'#b79bff');
-  scene.environment = pm.fromScene(env, 0.04).texture;
+  panel(0,26,6,22,12,new THREE.Color(5,5,5));
+  panel(-24,9,8,5,22,new THREE.Color(2.4,2.7,3.2));
+  panel(24,9,-8,5,22,new THREE.Color(2.9,2.5,3.3));
+  panel(0,7,-26,16,5,new THREE.Color(1.4,1.4,1.5));
+  panel(0,4,26,16,6,new THREE.Color(.6,.6,.62));
+  scene.environment = pm.fromScene(env, 0.02).texture;
   pm.dispose();
 })();
 
@@ -610,6 +622,45 @@ function makeMats(side){
 const MATS = { w:makeMats('w'), b:makeMats('b') };
 for(const s of ['w','b']) Object.values(MATS[s]).forEach(lin);
 const ACC = { w:'#8be8ff', b:'#c69dff' };
+
+/* ---------- Фарфоровые скульптуры (SDF-модели из папки models/) ---------- */
+const lc = hex => new THREE.Color(hex).convertSRGBToLinear();
+const PORC = {
+  w: new THREE.MeshPhysicalMaterial({ color:lc('#efece6'), roughness:.36, metalness:0, clearcoat:1, clearcoatRoughness:.07, vertexColors:true, envMapIntensity:1.15 }),
+  b: new THREE.MeshPhysicalMaterial({ color:lc('#1e1f25'), roughness:.3, metalness:0, clearcoat:1, clearcoatRoughness:.05, vertexColors:true, envMapIntensity:1.4 }),
+};
+const SHARD = { w:PORC.w.clone(), b:PORC.b.clone() };
+SHARD.w.vertexColors=false; SHARD.b.vertexColors=false;
+SHARD.w.color=lc('#e2dfd8'); SHARD.b.color=lc('#1a1b20');
+PORC.w.userData.shard=SHARD.w; PORC.b.userData.shard=SHARD.b;
+const SCULPT = { w:{}, b:{} };
+const LOD = isSmall ? 'lo' : 'hi';
+const pad4 = n => (n+3)&~3;
+async function loadSculpt(side, t){
+  const res = await fetch(`models/${side}-${t}-${LOD}.bin`);
+  if(!res.ok) throw new Error(`models/${side}-${t}: ${res.status}`);
+  const buf = await res.arrayBuffer(), h = new Uint32Array(buf,0,3), nv=h[0], ni=h[1], i16=h[2];
+  let o=12; const qp=new Uint16Array(buf,o,nv*3); o+=pad4(nv*6);
+  const ao=new Uint8Array(buf,o,nv); o+=pad4(nv);
+  const idx = i16 ? new Uint16Array(buf,o,ni) : new Uint32Array(buf,o,ni);
+  const pos=new Float32Array(nv*3), col=new Float32Array(nv*3);
+  for(let i=0;i<nv;i++){
+    pos[3*i]=-.5+qp[3*i]/65535; pos[3*i+1]=-.05+qp[3*i+1]/65535*1.65; pos[3*i+2]=-.5+qp[3*i+2]/65535;
+    const a=Math.pow(ao[i]/255,1.6)*.86+.14; col[3*i]=col[3*i+1]=col[3*i+2]=a;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.BufferAttribute(col,3));
+  g.setIndex(new THREE.BufferAttribute(idx,1));
+  g.computeVertexNormals(); g.computeBoundingSphere();
+  SCULPT[side][t]=g;
+}
+async function loadAllSculpts(onProgress){
+  const jobs=[]; let done=0;
+  for(const s of ['w','b']) for(const t of ['p','n','b','r','q','k'])
+    jobs.push(loadSculpt(s,t).then(()=>onProgress(++done,12)));
+  await Promise.all(jobs);
+}
 
 const BASE_PTS = [[0,0],[.37,0],[.385,.03],[.36,.065],[.32,.09],[.3,.1],[0,.1]];
 
@@ -754,9 +805,15 @@ const faceOf = c => c==='w' ? Math.PI : 0;
 function createModel(p, sq){
   const outer=new THREE.Group(), inner=new THREE.Group(), m=MATS[p.c];
   outer.add(inner);
-  inner.add(M(lathe(BASE_PTS,36),m.body));
-  inner.add(M(torus(.366,.011,48),m.glow,0,.06,0,Math.PI/2,0,0));
-  const w=BUILD[p.t](inner,m);
+  let w=null;
+  const sg=SCULPT[p.c][p.t];
+  if(sg){
+    const mesh=new THREE.Mesh(sg, PORC[p.c]); mesh.castShadow=true; mesh.receiveShadow=true; inner.add(mesh);
+  } else { // запасной вариант, если модели не загрузились
+    inner.add(M(lathe(BASE_PTS,36),m.body));
+    inner.add(M(torus(.366,.011,48),m.glow,0,.06,0,Math.PI/2,0,0));
+    w=BUILD[p.t](inner,m);
+  }
   outer.userData={ id:p.id, type:p.t, color:p.c, inner, weapon:w, face:faceOf(p.c), lift:0, anim:false, phase:Math.random()*6.28 };
   outer.position.copy(sqPos(sq)); outer.rotation.y=faceOf(p.c);
   piecesRoot.add(outer); models.set(p.id, outer);
@@ -852,27 +909,31 @@ function shatter(model, dir){
   model.updateMatrixWorld(true);
   const meshes=[]; model.traverse(o=>{ if(o.isMesh) meshes.push(o); });
   const center=model.position.clone().add(V(0,.5,0));
-  let budget=isSmall?70:110;
+  let budget=isSmall?60:110;
+  const spawn=(pos, mat, s, i)=>{
+    const c=new THREE.Mesh(chunkGeos[i%3], mat);
+    c.scale.setScalar(s); c.castShadow=true; c.position.copy(pos);
+    c.rotation.set(rnd(0,6),rnd(0,6),rnd(0,6)); scene.add(c);
+    const out=c.position.clone().sub(center); out.y=0; if(out.lengthSq()<1e-4) out.set(rnd(-1,1),0,rnd(-1,1)); out.normalize();
+    const v=out.multiplyScalar(rnd(.6,2.4)).add(dir.clone().multiplyScalar(rnd(1.2,3.2)));
+    v.y=rnd(1.4,4.2);
+    chunks.push({ m:c, v, av:V(rnd(-9,9),rnd(-9,9),rnd(-9,9)), life:0, s, ttl:rnd(1.6,2.6) });
+  };
   for(const m of meshes){
     if(budget<=0) break;
+    const pa=m.geometry.attributes.position;
+    if(pa.count>2000){ // скульптура: осколки из точек её поверхности
+      const n=budget; budget=0; const tv=new THREE.Vector3(), mat=m.material.userData.shard||m.material;
+      for(let i=0;i<n;i++){ tv.fromBufferAttribute(pa, Math.floor(Math.random()*pa.count)); m.localToWorld(tv); spawn(tv, mat, rnd(.022,.068)*(i%7===0?1.6:1), i); }
+      continue;
+    }
     if(!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
     const ws=new THREE.Vector3(); m.getWorldScale(ws);
     const rad=m.geometry.boundingSphere.radius*Math.max(ws.x,ws.y,ws.z);
     const n=Math.min(budget, Math.max(1,Math.round(rad*20)));
     budget-=n;
     const wp=new THREE.Vector3(); m.getWorldPosition(wp);
-    for(let i=0;i<n;i++){
-      const s=Math.max(.018,Math.min(.085,rad*.45))*rnd(.5,1.1);
-      const c=new THREE.Mesh(chunkGeos[i%3], m.material);
-      c.scale.setScalar(s); c.castShadow=true;
-      c.position.copy(wp).add(V(rnd(-1,1),rnd(-1,1),rnd(-1,1)).multiplyScalar(rad*.6));
-      c.rotation.set(rnd(0,6),rnd(0,6),rnd(0,6));
-      scene.add(c);
-      const out=c.position.clone().sub(center); out.y=0; if(out.lengthSq()<1e-4) out.set(rnd(-1,1),0,rnd(-1,1)); out.normalize();
-      const v=out.multiplyScalar(rnd(.6,2.4)).add(dir.clone().multiplyScalar(rnd(1.2,3.2)));
-      v.y=rnd(1.4,4.2);
-      chunks.push({ m:c, v, av:V(rnd(-9,9),rnd(-9,9),rnd(-9,9)), life:0, s, ttl:rnd(1.6,2.6) });
-    }
+    for(let i=0;i<n;i++) spawn(wp.clone().add(V(rnd(-1,1),rnd(-1,1),rnd(-1,1)).multiplyScalar(rad*.6)), m.material, Math.max(.018,Math.min(.085,rad*.45))*rnd(.5,1.1), i);
   }
 }
 function burst(pos, color, n=46, speed=3){
@@ -919,18 +980,20 @@ function impact(victim, dir, attackerColor){
 }
 
 async function strike(att, victim, approach, dir){
-  const u=att.userData, w=u.weapon, wd=w.userData;
+  const u=att.userData, w=u.weapon, wd=w&&w.userData, inn=u.inner;
+  const back = w ? .08 : .22, fwd = w ? .2 : .62, lunge = w ? .26 : .36;
   u.anim=true;
-  await tween(260, k=>{ w.rotation.x=wd.base-wd.dir*wd.wind*k; u.inner.rotation.x=-.08*k; }, E.out);
+  // замах: оружием, а у скульптуры — всем корпусом назад
+  await tween(w?260:300, k=>{ if(w) w.rotation.x=wd.base-wd.dir*wd.wind*k; inn.rotation.x=-back*k; inn.position.z=w?0:-.05*k; }, E.out);
   sfx('swing');
-  await tween(120, k=>{ w.rotation.x=wd.base-wd.dir*wd.wind+wd.dir*(wd.wind+wd.amp)*k; u.inner.rotation.x=-.08+.2*k; att.position.copy(approach).addScaledVector(dir,.26*k); }, E.in);
-  if(u.type==='b' && wd.orb){
-    const from=new THREE.Vector3(); wd.orb.getWorldPosition(from);
+  await tween(120, k=>{ if(w) w.rotation.x=wd.base-wd.dir*wd.wind+wd.dir*(wd.wind+wd.amp)*k; inn.rotation.x=-back+fwd*k; inn.position.z=w?0:-.05+.05*k; att.position.copy(approach).addScaledVector(dir,lunge*k); }, E.in);
+  if(u.type==='b'){
+    const from = (w && wd.orb) ? wd.orb.getWorldPosition(new THREE.Vector3()) : att.localToWorld(V(0,1.0,.15));
     await bolt(from, victim.position.clone().add(V(0,.55,0)), ACC[u.color]);
   }
   impact(victim, dir, u.color);
-  await tween(420, k=>{ w.rotation.x=wd.base+wd.dir*wd.amp*(1-k); u.inner.rotation.x=.12*(1-k); att.position.copy(approach).addScaledVector(dir,.26*(1-k)); }, E.out);
-  u.inner.rotation.x=0; u.anim=false;
+  await tween(440, k=>{ if(w) w.rotation.x=wd.base+wd.dir*wd.amp*(1-k); inn.rotation.x=(fwd-back)*(1-k); att.position.copy(approach).addScaledVector(dir,lunge*(1-k)); }, E.out);
+  inn.rotation.x=0; inn.position.z=0; u.anim=false;
 }
 
 async function animateMove(m, promoType){
@@ -1087,10 +1150,10 @@ async function onSquare(sq){
     if(selected===sq){ deselect(); return; }
     selected=sq; selMoves=legalFrom(board,st,sq);
     showMoveMarks(sq, selMoves); sfx('select');
-    if(!selMoves.length) toast(`${cap(UNIT[p.t].name)} сейчас не может ходить`);
+    if(!selMoves.length) toast(`${UNIT[p.c][p.t].name} сейчас не может ходить`);
     return;
   }
-  if(p && p.c!==st.turn && selected<0) toast(st.turn==='w'?'Сейчас ходят светлые':'Сейчас ходят тёмные');
+  if(p && p.c!==st.turn && selected<0) toast(`Сейчас ход: ${SIDE[st.turn]}`);
   deselect();
 }
 
@@ -1110,7 +1173,7 @@ async function doMove(m, promoType){
   if(victim){ factCount++; await showFact(victim, mover); }
   if(turnCam) await turnCam;
   if(st.over) await showOver();
-  else if(st.check) toast(st.turn==='w'?'Шах светлому королю!':'Шах тёмному королю!');
+  else if(st.check) toast(`Шах ${KING_DAT[st.turn]}!`);
   busy=false; updateButtons();
 }
 
@@ -1125,7 +1188,7 @@ function undo(){
 function restart(){
   newGame(); deselect(); rebuildModels(); updateLastMove(); updateCheckMark(); updateHUD(); save();
   rotateToSide('w');
-  toast('Новая партия. Светлые начинают');
+  toast(`Новая партия. Первым ходит «${SIDE.w}»`);
 }
 
 /* =========================================================
@@ -1139,7 +1202,7 @@ function toast(text, ms=2600){
 function updateButtons(){ $('undoBtn').disabled = busy || !history.length; }
 function updateHUD(){
   const t=$('turn'); t.dataset.side=st.turn;
-  $('turnText').textContent = st.turn==='w'?'Ход светлых':'Ход тёмных';
+  $('turnText').textContent = `Ход: ${SIDE[st.turn]}`;
   $('moveNo').textContent = `· ход ${st.full}`;
   $('status').textContent = st.over ? (st.over.type==='mate'?'Мат':'Ничья') : (st.check?'Шах!':'');
   const order='qrbnp';
@@ -1147,8 +1210,8 @@ function updateHUD(){
   $('lostW').textContent=fmt(captured.w); $('lostB').textContent=fmt(captured.b);
   const sum = a => a.reduce((s,x)=>s+VAL[x],0);
   const diff = sum(captured.b)-sum(captured.w);
-  $('advW').textContent = diff>0 ? `+${diff} у светлых` : '';
-  $('advB').textContent = diff<0 ? `+${-diff} у тёмных` : '';
+  $('advW').textContent = diff>0 ? `перевес +${diff}` : '';
+  $('advB').textContent = diff<0 ? `перевес +${-diff}` : '';
   $('rotBtn').setAttribute('aria-pressed', String(autoRotate));
   $('soundBtn').setAttribute('aria-pressed', String(soundOn));
   updateButtons();
@@ -1166,11 +1229,11 @@ function closeSheet(id){
 
 function showFact(victim, attacker){
   return new Promise(res=>{
-    const vu=UNIT[victim.t], au=UNIT[attacker.t];
+    const vu=UNIT[victim.c][victim.t], au=UNIT[attacker.c][attacker.t];
     const g=$('factGlyph'); g.textContent=GL[victim.t]; g.style.setProperty('--acc', ACC[victim.c]);
-    $('factEyebrow').textContent=`Пал в бою · ${vu.chess}`;
-    $('factTitle').textContent=`${cap(sideAdj(victim.c,vu.fem))} ${vu.name} ${vu.fem?'повержена':'повержен'}`;
-    $('factBy').textContent=`${au.fem?'Сразила':'Сразил'}: ${sideAdj(attacker.c,au.fem)} ${au.name}`;
+    $('factEyebrow').textContent=`Выбывает из игры · ${CHESS[victim.t]} · ${SIDE[victim.c]}`;
+    $('factTitle').textContent=`${vu.name} ${vu.fem?'повержена':'повержен'}`;
+    $('factBy').textContent=`${au.fem?'Сразила':'Сразил'}: ${au.name}`;
     $('factText').textContent=nextFact(victim.t);
     $('factMeta').textContent=`Факт ${factCount} в этой партии`;
     openSheet('factSheet');
@@ -1183,6 +1246,8 @@ function showFact(victim, attacker){
 function askPromo(color){
   return new Promise(res=>{
     $('promoGrid').style.color = ACC[color];
+    $('promoGrid').querySelectorAll('button[data-t]').forEach(b=>{ b.lastChild.textContent=UNIT[color][b.dataset.t].name; });
+    $('promoTitle').textContent=`${UNIT[color].p.name} дошёл до края поля. Кем он станет?`;
     openSheet('promoSheet');
     const grid=$('promoGrid');
     setTimeout(()=>grid.querySelector('button').focus({preventScroll:true}),50);
@@ -1194,7 +1259,7 @@ function showOver(){
   return new Promise(res=>{
     const o=st.over; const g=$('overGlyph');
     let title, eyebrow;
-    if(o.type==='mate'){ title=`Мат! Победа ${o.winner==='w'?'светлых':'тёмных'}`; eyebrow='Король пал'; g.style.setProperty('--acc',ACC[o.winner]); sfx('win'); }
+    if(o.type==='mate'){ title=`Мат! Победа: ${SIDE[o.winner]}`; eyebrow=`${UNIT[opp(o.winner)].k.name} повержен`; g.style.setProperty('--acc',ACC[o.winner]); sfx('win'); }
     else { g.style.setProperty('--acc','#8b9cb2'); eyebrow='Ничья';
       title = o.type==='stalemate' ? 'Пат — ходить некуда' : o.type==='fifty' ? 'Ничья по правилу 50 ходов' : 'Ничья: не хватает сил для мата'; }
     $('overEyebrow').textContent=eyebrow; $('overTitle').textContent=title;
@@ -1309,19 +1374,29 @@ function step(now){
 window.addEventListener('resize', fitCamera);
 window.addEventListener('orientationchange', ()=>setTimeout(fitCamera,200));
 
-function start(hotData){
+async function start(hotData){
   let ok=false;
   if(hotData && hotData.save) ok=load(hotData.save);
   if(!ok){ try{ const s=localStorage.getItem('legion-save'); if(s) ok=load(JSON.parse(s)); }catch(e){} }
   if(!ok) newGame();
   evaluate();
-  linAll(scene); rebuildModels(); updateLastMove(); updateCheckMark(); updateHUD();
+  linAll(scene); updateLastMove(); updateCheckMark(); updateHUD();
   cam.theta = autoRotate && st.turn==='b' ? Math.PI : 0;
   fitCamera();
-  if(!history.length) setTimeout(()=>toast('Коснитесь светлого воина, затем подсвеченной клетки', 4200), 600);
-  else toast(st.turn==='w'?'Партия продолжается. Ходят светлые':'Партия продолжается. Ходят тёмные');
   requestAnimationFrame(frame);
+  busy=true; updateButtons();
+  try{
+    await loadAllSculpts((d,n)=>{ $('loaderFill').style.width=(d/n*100)+'%'; $('loaderMeta').textContent=`${d} из ${n}`; });
+  }catch(err){
+    console.error('[legion] модели', err);
+    toast('Фарфоровые фигуры не загрузились, показываю простые', 4000);
+  }
+  $('loader').classList.add('done');
+  rebuildModels(); busy=false; updateButtons();
+  if(!history.length) setTimeout(()=>toast(`Первым ходит «${SIDE.w}». Коснитесь своей фигуры, затем подсвеченной клетки`, 4600), 300);
+  else toast(`Партия продолжается. Ход: ${SIDE[st.turn]}`);
 }
+if(location.search.includes('debug')) window.__legion = { onSquare, cam, step, get busy(){return busy;}, get modal(){return modalOpen;} };
 const hot = window.claude && window.claude.hot;
 if(hot && hot.snapshot) hot.snapshot(()=>({ save:serialize() }));
 if(hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
