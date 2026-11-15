@@ -37,14 +37,16 @@ function mesh(f, opt={}){
   for(let k=1;k<nz-1;k++) for(let j=0;j<ny-1;j++) for(let i=1;i<nx-1;i++){ const s=val[idx(i,j,k)]<0; if(s!==(val[idx(i,j+1,k)]<0)) quad(cidx[cI(i-1,j,k-1)],cidx[cI(i,j,k-1)],cidx[cI(i,j,k)],cidx[cI(i-1,j,k)]); }
   for(let k=0;k<nz-1;k++) for(let j=1;j<ny-1;j++) for(let i=1;i<nx-1;i++){ const s=val[idx(i,j,k)]<0; if(s!==(val[idx(i,j,k+1)]<0)) quad(cidx[cI(i-1,j-1,k)],cidx[cI(i,j-1,k)],cidx[cI(i,j,k)],cidx[cI(i-1,j,k)]); }
 
-  const nv=P.length/3, pos=new Float32Array(P), nor=new Float32Array(nv*3), ao=new Float32Array(nv);
+  const nv=P.length/3, pos=new Float32Array(P), nor=new Float32Array(nv*3), ao=new Float32Array(nv), mat=new Uint8Array(nv);
   const e=h*.5;
   const grad=(x,y,z,out,o)=>{ const a=f(x+e,y-e,z-e), b=f(x-e,y-e,z+e), c3=f(x-e,y+e,z-e), d=f(x+e,y+e,z+e);
     let gx=a-b-c3+d, gy=-a-b+c3+d, gz=-a+b-c3+d; const l=Math.hypot(gx,gy,gz)||1; out[o]=gx/l; out[o+1]=gy/l; out[o+2]=gz/l; };
   const tmp=new Float32Array(3);
   for(let q=0;q<nv;q++){ let x=pos[3*q],y=pos[3*q+1],z=pos[3*q+2];
     for(let it=0;it<2;it++){ const d=f(x,y,z); grad(x,y,z,tmp,0); const s=Math.max(-h,Math.min(h,d)); x-=tmp[0]*s; y-=tmp[1]*s; z-=tmp[2]*s; }
-    pos[3*q]=x; pos[3*q+1]=y; pos[3*q+2]=z; grad(x,y,z,nor,3*q);
+    pos[3*q]=x; pos[3*q+1]=y; pos[3*q+2]=z;
+    if(opt.getMat){ f(x,y,z); mat[q]=opt.getMat(); }
+    grad(x,y,z,nor,3*q);
     let occ=0, sca=1; const nx_=nor[3*q],ny_=nor[3*q+1],nz_=nor[3*q+2];
     for(let s=1;s<=6;s++){ const hh=.006+.022*s; const d=f(x+nx_*hh,y+ny_*hh,z+nz_*hh); occ+=(hh-d)*sca; sca*=.72; }
     // небесная видимость: снизу темнее
@@ -58,7 +60,7 @@ function mesh(f, opt={}){
     const fx=uy*vz-uz*vy, fy=uz*vx-ux*vz, fz=ux*vy-uy*vx;
     const mx=nor[3*a]+nor[3*b]+nor[3*c2], my=nor[3*a+1]+nor[3*b+1]+nor[3*c2+1], mz=nor[3*a+2]+nor[3*b+2]+nor[3*c2+2];
     if(fx*mx+fy*my+fz*mz<0){ I[t+1]=c2; I[t+2]=b; } }
-  return { pos, nor, ao, idx:new Uint32Array(I), stats:{nx,ny,nz,evals,nv,tris:I.length/3} };
+  return { pos, nor, ao, mat, idx:new Uint32Array(I), stats:{nx,ny,nz,evals,nv,tris:I.length/3} };
 }
 function toBin(m){
   const nv=m.pos.length/3, ni=m.idx.length;

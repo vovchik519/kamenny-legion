@@ -57,4 +57,30 @@ const base = (x,y,z) => rev(x,y,z,0,0,BASE,.003);
 // узор желобков на постаменте (бусины)
 function piece(fn){ return (x,y,z)=>{ let d=fn(x,y,z); const b=base(x,y,z); return smin(b,d,.025); }; }
 
-module.exports = { sqrt,abs,max,min,sin,cos,atan2,floor,PI,clamp,smin,smax,carve,rot,sph,ell,cone,chain,box,tor,torZ,cyl,makeRev,rev,smileSDF,piece,base };
+/* ---------- Скульптура с материалами ----------
+   Материалы: 0 основной фарфор, 1 металл, 2 тёмная глазурь, 3 светлая глазурь, 4 свечение */
+const ST = { D:1e9, M:0 };
+const begin = () => { ST.D=1e9; ST.M=0; };
+function add(d, m=0, k=0){ if(d<ST.D) ST.M=m; ST.D = k>0 ? smin(ST.D,d,k) : min(ST.D,d); }
+function cut(c, m=-1, k=0){ const v=-c; if(v>ST.D && m>=0) ST.M=m; ST.D = k>0 ? smax(ST.D,v,k) : max(ST.D,v); }
+function paint(mask, m){ if(mask<0) ST.M=m; }
+// сглаженная кривая Катмулла–Рома по контрольным точкам + радиусы
+function spline(ctrl, n){ const out=[]; const P=i=>ctrl[Math.max(0,Math.min(ctrl.length-1,i))];
+  for(let s=0;s<=n;s++){ const u=s/n*(ctrl.length-1), i=Math.min(ctrl.length-2,Math.floor(u)), t=u-i;
+    const p0=P(i-1),p1=P(i),p2=P(i+1),p3=P(i+2), t2=t*t,t3=t2*t, r=[];
+    for(let k=0;k<3;k++) r.push(.5*((2*p1[k])+(-p0[k]+p2[k])*t+(2*p0[k]-5*p1[k]+4*p2[k]-p3[k])*t2+(-p0[k]+3*p1[k]-3*p2[k]+p3[k])*t3));
+    out.push(r); } return out; }
+function radii(rs, n){ const out=[]; for(let s=0;s<=n;s++){ const u=s/n*(rs.length-1), i=Math.min(rs.length-2,Math.floor(u)), t=u-i; out.push(rs[i]+(rs[i+1]-rs[i])*t); } return out; }
+const tube = (x,y,z,P,R,k=.008) => chain(x,y,z,P,R,k);
+// постамент Стаунтона с золотыми поясками
+function stauntonPiece(build){
+  return (x,y,z)=>{ begin(); const b=base(x,y,z); ST.D=b; ST.M=0; build(x,y,z);
+    // поясок и воротник постамента — металл, только на самом постаменте
+    if(abs(b-ST.D)<.004 || b<=ST.D+.002){ const r=sqrt(x*x+z*z);
+      if((y>.076&&y<.099&&r>.29) || (y>.151&&y<.168&&r>.2) || (y<.012&&r>.33)) ST.M=1; }
+    return ST.D; };
+}
+const getMat = () => ST.M;
+
+module.exports = { sqrt,abs,max,min,sin,cos,atan2,floor,PI,clamp,smin,smax,carve,rot,sph,ell,cone,chain,box,tor,torZ,cyl,makeRev,rev,smileSDF,piece,base,
+  ST,begin,add,cut,paint,spline,radii,tube,stauntonPiece,getMat };
