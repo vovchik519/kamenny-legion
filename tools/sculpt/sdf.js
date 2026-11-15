@@ -73,11 +73,11 @@ function spline(ctrl, n){ const out=[]; const P=i=>ctrl[Math.max(0,Math.min(ctrl
 function radii(rs, n){ const out=[]; for(let s=0;s<=n;s++){ const u=s/n*(rs.length-1), i=Math.min(rs.length-2,Math.floor(u)), t=u-i; out.push(rs[i]+(rs[i+1]-rs[i])*t); } return out; }
 const tube = (x,y,z,P,R,k=.008) => chain(x,y,z,P,R,k);
 // постамент Стаунтона с золотыми поясками
-function stauntonPiece(build){
-  return (x,y,z)=>{ begin(); const b=base(x,y,z); ST.D=b; ST.M=0; build(x,y,z);
+function stauntonPiece(build, baseCol=0, ringCol=1){
+  return (x,y,z)=>{ begin(); const b=base(x,y,z); ST.D=b; ST.M=baseCol; build(x,y,z);
     // поясок и воротник постамента — металл, только на самом постаменте
-    if(abs(b-ST.D)<.004 || b<=ST.D+.002){ const r=sqrt(x*x+z*z);
-      if((y>.076&&y<.099&&r>.29) || (y>.151&&y<.168&&r>.2) || (y<.012&&r>.33)) ST.M=1; }
+    if(abs(b-ST.D)<.004 || b<=ST.D+.002){ const r=sqrt(x*x+z*z); ST.M=baseCol;
+      if((y>.076&&y<.099&&r>.29) || (y>.151&&y<.168&&r>.2) || (y<.012&&r>.33)) ST.M=ringCol; }
     return ST.D; };
 }
 const getMat = () => ST.M;
